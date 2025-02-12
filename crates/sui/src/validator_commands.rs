@@ -897,8 +897,12 @@ impl Display for SuiValidatorCommandResponse {
         match self {
             SuiValidatorCommandResponse::MakeValidatorInfo => {}
             SuiValidatorCommandResponse::DisplayMetadata => {}
-            SuiValidatorCommandResponse::BecomeCandidate(response) => {
-                write!(writer, "{:?}", response)?;
+            SuiValidatorCommandResponse::BecomeCandidate(tx_data) => {
+                writeln!(
+                    writer,
+                    "{}",
+                    fastcrypto::encoding::Base64::encode(bcs::to_bytes(tx_data).unwrap())
+                )?;
             }
             SuiValidatorCommandResponse::JoinCommittee(response) => {
                 write!(writer, "{}", write_transaction_response(response)?)?;
