@@ -1,14 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::rest::transactions::SimulateTransactionQueryParameters;
-use crate::rest::transactions::TransactionSimulationResponse;
 use crate::types::EffectsFinality;
 use crate::types::ExecuteTransactionOptions;
 use crate::types::ExecuteTransactionResponse;
+use crate::types::SimulateTransactionQueryParameters;
+use crate::types::TransactionSimulationResponse;
 use crate::Result;
+use crate::RpcError;
 use crate::RpcService;
-use crate::RpcServiceError;
 use sui_sdk_types::framework::Coin;
 use sui_sdk_types::Address;
 use sui_sdk_types::BalanceChange;
@@ -129,7 +129,7 @@ impl RpcService {
     }
 
     pub fn simulate_transaction(
-        self,
+        &self,
         parameters: &SimulateTransactionQueryParameters,
         transaction: Transaction,
     ) -> Result<TransactionSimulationResponse> {
@@ -139,8 +139,8 @@ impl RpcService {
             .ok_or_else(|| anyhow::anyhow!("No Transaction Executor"))?;
 
         if transaction.gas_payment.objects.is_empty() {
-            return Err(RpcServiceError::new(
-                axum::http::StatusCode::BAD_REQUEST,
+            return Err(RpcError::new(
+                tonic::Code::InvalidArgument,
                 "no gas payment provided",
             ));
         }
@@ -156,8 +156,8 @@ impl RpcService {
             .map_err(anyhow::Error::from)?;
 
         if mock_gas_id.is_some() {
-            return Err(RpcServiceError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            return Err(RpcError::new(
+                tonic::Code::Internal,
                 "simulate unexpectedly used a mock gas payment",
             ));
         }
