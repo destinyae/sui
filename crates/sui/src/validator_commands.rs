@@ -48,7 +48,7 @@ use sui_json_rpc_types::{
 use sui_keys::{
     key_derive::generate_new_key,
     keypair_file::{
-        read_authority_keypair_from_file, read_keypair_from_file, read_network_keypair_from_file,
+        read_authority_keypair_from_file, read_network_keypair_from_file,
         write_authority_keypair_to_file, write_keypair_to_file,
     },
 };
@@ -78,6 +78,7 @@ pub enum SuiValidatorCommand {
         project_url: String,
         host_name: String,
         gas_price: u64,
+        account_address: SuiAddress,
     },
     #[clap(name = "become-candidate")]
     BecomeCandidate {
@@ -214,7 +215,7 @@ pub enum SuiValidatorCommand {
 pub enum SuiValidatorCommandResponse {
     MakeValidatorInfo,
     DisplayMetadata,
-    BecomeCandidate(SuiTransactionBlockResponse),
+    BecomeCandidate(TransactionData),
     JoinCommittee(SuiTransactionBlockResponse),
     LeaveCommittee(SuiTransactionBlockResponse),
     UpdateMetadata(SuiTransactionBlockResponse),
@@ -282,6 +283,7 @@ impl SuiValidatorCommand {
                 project_url,
                 host_name,
                 gas_price,
+                account_address,
             } => {
                 let dir = std::env::current_dir()?;
                 let protocol_key_file_name = dir.join("protocol.key");
@@ -291,29 +293,28 @@ impl SuiValidatorCommand {
                         "Other account key types supported yet, please use Ed25519 keys for now."
                     ),
                 };
-                let account_key_file_name = dir.join("account.key");
+                // let account_key_file_name = dir.join("account.key");
                 let network_key_file_name = dir.join("network.key");
                 let worker_key_file_name = dir.join("worker.key");
                 make_key_files(protocol_key_file_name.clone(), true, None)?;
-                make_key_files(account_key_file_name.clone(), false, Some(account_key))?;
+                // make_key_files(account_key_file_name.clone(), false, Some(account_key))?;
                 make_key_files(network_key_file_name.clone(), false, None)?;
                 make_key_files(worker_key_file_name.clone(), false, None)?;
 
                 let keypair: AuthorityKeyPair =
                     read_authority_keypair_from_file(protocol_key_file_name)?;
-                let account_keypair: SuiKeyPair = read_keypair_from_file(account_key_file_name)?;
+                // let account_keypair: SuiKeyPair = read_keypair_from_file(account_key_file_name)?;
                 let worker_keypair: NetworkKeyPair =
                     read_network_keypair_from_file(worker_key_file_name)?;
                 let network_keypair: NetworkKeyPair =
                     read_network_keypair_from_file(network_key_file_name)?;
-                let pop =
-                    generate_proof_of_possession(&keypair, (&account_keypair.public()).into());
+                let pop = generate_proof_of_possession(&keypair, account_address);
                 let validator_info = GenesisValidatorInfo {
                     info: sui_genesis_builder::validator_info::ValidatorInfo {
                         name,
                         protocol_key: keypair.public().into(),
                         worker_key: worker_keypair.public().clone(),
-                        account_address: SuiAddress::from(&account_keypair.public()),
+                        account_address,
                         network_key: network_keypair.public().clone(),
                         gas_price,
                         commission_rate: sui_config::node::DEFAULT_COMMISSION_RATE,
@@ -390,8 +391,14 @@ impl SuiValidatorCommand {
                     CallArg::Pure(bcs::to_bytes(&validator.gas_price()).unwrap()),
                     CallArg::Pure(bcs::to_bytes(&validator.commission_rate()).unwrap()),
                 ];
-                let response =
-                    call_0x5(context, "request_add_validator_candidate", args, gas_budget).await?;
+                let response = construct_unsigned_0x5_txn(
+                    context,
+                    validator.account_address,
+                    "request_add_validator_candidate",
+                    args,
+                    gas_budget,
+                )
+                .await?;
                 SuiValidatorCommandResponse::BecomeCandidate(response)
             }
 
@@ -891,7 +898,7 @@ impl Display for SuiValidatorCommandResponse {
             SuiValidatorCommandResponse::MakeValidatorInfo => {}
             SuiValidatorCommandResponse::DisplayMetadata => {}
             SuiValidatorCommandResponse::BecomeCandidate(response) => {
-                write!(writer, "{}", write_transaction_response(response)?)?;
+                write!(writer, "{:?}", response)?;
             }
             SuiValidatorCommandResponse::JoinCommittee(response) => {
                 write!(writer, "{}", write_transaction_response(response)?)?;
